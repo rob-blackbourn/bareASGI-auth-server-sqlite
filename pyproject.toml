@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "bareasgi-auth-server-sqlite"
+version = "0.1.0"
+description = ""
+authors = ["Rob Blackbourn <rob.blackbourn@gmail.com>"]
+license = "Apache-2.0"
+packages = [
+    { include = "bareasgi_auth_server_sqlite" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+bareasgi = "^3.7"
+bareasgi-cors = "^3.1"
+PyYAML = "^5.4"
+aiosqlite = "^0.17"
+SQLAlchemy = {version = "1.4", allow-prereleases = true}
+Hypercorn = "^0.11"
+
+[tool.poetry.dev-dependencies]
+autopep8 = "^1.5"
+mypy = "^0.910"
+pylint = "^2.9"
+pytest = "^6.2"
+types-PyYAML = "^5.4"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
