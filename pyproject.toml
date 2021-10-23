@@ -9,9 +9,8 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.7"
-bareasgi = "^3.7"
-bareasgi-cors = "^3.1"
+python = "^3.8"
+bareasgi-auth-server = "^4.0"
 PyYAML = "^5.4"
 aiosqlite = "^0.17"
 SQLAlchemy = {version = "1.4", allow-prereleases = true}

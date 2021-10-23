@@ -1,13 +1,17 @@
 """A SQL Auth Provider"""
 
 import hashlib
-from typing import AbstractSet, Dict, Mapping, Optional, Set, Tuple
+from typing import Dict, List, Mapping, Optional, Set, Tuple
 import uuid
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from bareasgi_auth_server.auth_service import AuthService
+from bareasgi_auth_server import (
+    AuthService,
+    UserNotFoundError,
+    UserCredentialsError
+)
 
 
 class SqlAuthService(AuthService):
@@ -19,27 +23,27 @@ class SqlAuthService(AuthService):
         self._roles: Optional[sa.Table] = None
         self._members: Optional[sa.Table] = None
 
-    async def authenticate(self, **credentials) -> Optional[str]:
+    async def authenticate(self, **credentials) -> str:
         username = credentials['username']
         password = credentials['password']
 
         try:
-            if await self.check_password(username, password):
-                return username
+            if not await self.check_password(username, password):
+                raise UserCredentialsError(
+                    f'Failed to authenticate {username}')
+            return username
 
-        except:  # pylint: disable=bare-except
-            pass
+        except Exception as error:
+            raise UserNotFoundError(f'Failed to find {username}')
 
-        return None
+    async def is_valid_user(self, user_id: str) -> bool:
+        return await self.user_is_enabled(user_id)
 
-    async def is_valid_user(self, user: str) -> bool:
-        return await self.user_is_enabled(user)
-
-    async def authorizations(self, user: str) -> AbstractSet[str]:
-        return await self.user_roles(user)
+    async def authorizations(self, user_id: str) -> List[str]:
+        return await self.user_roles(user_id)
 
     async def add_user(self, name: str, password: str, is_enabled: bool) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         salt, hashed_password = self._hash_password(password)
 
@@ -60,7 +64,7 @@ class SqlAuthService(AuthService):
             return False
 
     async def user_exists(self, name: str) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         stmt = sa.select(
             self._users.c.user_id
@@ -74,7 +78,7 @@ class SqlAuthService(AuthService):
             return row is not None
 
     async def user_is_enabled(self, name: str) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         stmt = sa.select(
             self._users.c.is_enabled
@@ -88,7 +92,7 @@ class SqlAuthService(AuthService):
             return row is not None and row['is_enabled']
 
     async def check_password(self, name: str, password: str) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         stmt = sa.select(
             self._users.c.salt,
@@ -107,7 +111,7 @@ class SqlAuthService(AuthService):
             )
 
     async def change_password(self, name: str, password: str) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         salt, hashed_password = self._hash_password(password)
 
@@ -123,7 +127,7 @@ class SqlAuthService(AuthService):
             return result.rowcount == 1
 
     async def delete_user(self, name: str) -> bool:
-        assert self._users is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
 
         stmt = self._users.delete().where(
             self._users.c.name == name
@@ -134,7 +138,7 @@ class SqlAuthService(AuthService):
             return result.rowcount == 1
 
     async def add_role(self, name: str, description: Optional[str] = None) -> bool:
-        assert self._roles is not None, "repository not initialised"
+        assert self._roles is not None, "repository not initialized"
         stmt = self._roles.insert([{
             self._roles.c.name: name,
             self._roles.c.description: description,
@@ -147,16 +151,16 @@ class SqlAuthService(AuthService):
             return False
 
     async def delete_role(self, name: str) -> bool:
-        assert self._roles is not None, "repository not initialised"
+        assert self._roles is not None, "repository not initialized"
         stmt = self._roles.delete().where(self._roles.c.name == name)
         async with self._engine.begin() as conn:
             result = await conn.execute(stmt)
             return result.rowcount == 1
 
     async def has_role(self, user: str, group: str) -> bool:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = sa.select(
             self._members.c.member_id
         ).join(
@@ -178,7 +182,7 @@ class SqlAuthService(AuthService):
             return row is not None
 
     async def role_exists(self, group: str) -> bool:
-        assert self._roles is not None, "repository not initialised"
+        assert self._roles is not None, "repository not initialized"
         stmt = sa.select(
             self._roles.c.role_id
         ).where(
@@ -190,9 +194,9 @@ class SqlAuthService(AuthService):
             return row is not None
 
     async def grant(self, user: str, role: str) -> bool:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = self._members.insert().from_select(
             [
                 self._users.c.user_id,
@@ -216,9 +220,9 @@ class SqlAuthService(AuthService):
             return result.rowcount == 1
 
     async def revoke(self, user: str, role: str) -> bool:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = self._members.delete().where(
             sa.exists(
                 sa.select(
@@ -244,10 +248,10 @@ class SqlAuthService(AuthService):
             result = await conn.execute(stmt)
             return result.rowcount == 1
 
-    async def role_users(self, role: str) -> AbstractSet[str]:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+    async def role_users(self, role: str) -> List[str]:
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = sa.select(
             self._users.c.name
         ).join(
@@ -262,12 +266,12 @@ class SqlAuthService(AuthService):
         )
         async with self._engine.connect() as conn:
             cursor = await conn.stream(stmt)
-            return {row['name'] async for row in cursor}
+            return [row['name'] async for row in cursor]
 
-    async def user_roles(self, user: str) -> AbstractSet[str]:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+    async def user_roles(self, user: str) -> List[str]:
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = sa.select(
             self._roles.c.name
         ).join(
@@ -281,12 +285,12 @@ class SqlAuthService(AuthService):
         )
         async with self._engine.connect() as conn:
             cursor = await conn.stream(stmt)
-            return {row['name'] async for row in cursor}
+            return [row['name'] async for row in cursor]
 
-    async def update_user_roles(self, user: str, roles: AbstractSet[str]) -> bool:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+    async def update_user_roles(self, user: str, roles: List[str]) -> bool:
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = self._members.delete().where(
             sa.exists(
                 sa.select(
@@ -316,10 +320,10 @@ class SqlAuthService(AuthService):
             )
             return result.rowcount > 0
 
-    async def permissions(self, roles_by_users: bool) -> Mapping[str, AbstractSet[str]]:
-        assert self._users is not None, "repository not initialised"
-        assert self._roles is not None, "repository not initialised"
-        assert self._members is not None, "repository not initialised"
+    async def permissions(self, roles_by_users: bool) -> Mapping[str, List[str]]:
+        assert self._users is not None, "repository not initialized"
+        assert self._roles is not None, "repository not initialized"
+        assert self._members is not None, "repository not initialized"
         stmt = sa.select(
             self._users.c.name.label('user_name'),
             self._roles.c.name.label('role_name')
@@ -332,7 +336,7 @@ class SqlAuthService(AuthService):
         )
         async with self._engine.connect() as conn:
             cursor = await conn.stream(stmt)
-            dct: Dict[str, Set[str]] = {}
+            dct: Dict[str, List[str]] = []
             if roles_by_users:
                 key = 'user_name'
                 value = 'role_name'
@@ -342,9 +346,9 @@ class SqlAuthService(AuthService):
 
             async for row in cursor:
                 if row[key] not in dct:
-                    dct[row[key]] = {row[value]}
+                    dct[row[key]] = [row[value]]
                 else:
-                    dct[row[key]].add(row[value])
+                    dct[row[key]].append(row[value])
 
             return dct
 
